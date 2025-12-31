@@ -1,0 +1,29 @@
+### Mac ###
+.DS_Store
+
+### Env ###
+.env
+
+### IntelliJ ###
+.idea/
+*.iml
+
+### Gradle ###
+.gradle/
+build/
+out/
+
+### Logs ###
+logs/
+*.log
+
+### H2 ###
+*.mv.db
+*.trace.db
+
+### Spring ###
+application-local.properties
+application-prod.properties
+
+### Docs ###
+HELP.md
