@@ -4,8 +4,11 @@ import com.example.coupon.dao.RedisDao;
 import com.example.coupon.dto.JwtToken;
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
+
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
@@ -23,7 +26,9 @@ import java.util.Date;
 import java.util.stream.Collectors;
 
 //JWT를 생성하고 검증하는 등의 핵심 기능을 제공하는 클래스
+//@Configuration
 @Slf4j
+@Configuration
 public class JwtTokenProvider {
     private final Key key;
     private final UserDetailsService userDetailsService;
@@ -47,6 +52,8 @@ public class JwtTokenProvider {
         this.redisDao = redisDao;
     }
 
+    //authentication으로부터 access토큰, refresh토큰 생성
+    @Bean
     public JwtToken generateToken(Authentication authentication) {
         // 권한 가져오기
         // JWT 토큰의 claims에 포함되어 사용자의 권한 정보를 저장하는데 사용됨
@@ -96,6 +103,7 @@ public class JwtTokenProvider {
                 .compact();
     }
 
+    // Authentication은 “JWT를 Spring Security가 이해할 수 있게 변환한 로그인 정보 객체”
     public Authentication getAuthentication(String accessToken) {
         // JWT 토큰 복호화
         Claims claims = parseClaims(accessToken);
