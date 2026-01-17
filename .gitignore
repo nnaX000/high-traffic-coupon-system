@@ -27,3 +27,4 @@ application-prod.properties
 
 ### Docs ###
 HELP.md
+src/main/resources/application.properties
