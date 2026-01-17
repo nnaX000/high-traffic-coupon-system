@@ -53,7 +53,6 @@ public class JwtTokenProvider {
     }
 
     //authentication으로부터 access토큰, refresh토큰 생성
-    @Bean
     public JwtToken generateToken(Authentication authentication) {
         // 권한 가져오기
         // JWT 토큰의 claims에 포함되어 사용자의 권한 정보를 저장하는데 사용됨
