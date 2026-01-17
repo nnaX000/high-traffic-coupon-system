@@ -42,7 +42,7 @@ public class JwtAuthenticationFilter extends GenericFilter {
     // Request Header에서 JWT 토큰 추출
     private String resolveToken(HttpServletRequest request) {
         String bearerToken = request.getHeader("Authorization");
-        if (StringUtils.hasText(bearerToken) && bearerToken.startsWith("Bearer")) {
+        if (StringUtils.hasText(bearerToken) && bearerToken.startsWith("Bearer ")) {
             return bearerToken.substring(7); // "Bearer " 이후만 넘기기
         }
         return null;
