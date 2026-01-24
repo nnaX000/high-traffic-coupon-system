@@ -7,15 +7,13 @@ import io.jsonwebtoken.security.Keys;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.stereotype.Component;
 
 import java.security.Key;
 import java.time.Duration;
@@ -28,10 +26,9 @@ import java.util.stream.Collectors;
 //JWT를 생성하고 검증하는 등의 핵심 기능을 제공하는 클래스
 //@Configuration
 @Slf4j
-@Configuration
+@Component
 public class JwtTokenProvider {
     private final Key key;
-    private final UserDetailsService userDetailsService;
     private final RedisDao redisDao; // RefreshToken 저장을 위해 Redis 사용
 
     private static final String GRANT_TYPE = "Bearer";
@@ -44,11 +41,9 @@ public class JwtTokenProvider {
 
     // application.properties에서 secret 값 가져와서 secretKey 사용하기
     public JwtTokenProvider(@Value("${jwt.secret}") String secretKey,
-                            UserDetailsService userDetailsService,
                             RedisDao redisDao) {
         byte[] keyBytes = Base64.getEncoder().encode(secretKey.getBytes());
         this.key = Keys.hmacShaKeyFor(keyBytes);
-        this.userDetailsService = userDetailsService;
         this.redisDao = redisDao;
     }
 

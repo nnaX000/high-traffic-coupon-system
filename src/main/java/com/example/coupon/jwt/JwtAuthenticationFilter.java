@@ -14,7 +14,6 @@ import java.io.IOException;
 
 @RequiredArgsConstructor
 @Slf4j
-@Configuration
 public class JwtAuthenticationFilter extends GenericFilter {
     private final JwtTokenProvider jwtTokenProvider;
 
@@ -22,6 +21,14 @@ public class JwtAuthenticationFilter extends GenericFilter {
     public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain) throws IOException, ServletException {
         // Request Header에서 JWT 토큰 추출
         String accessToken = resolveToken((HttpServletRequest) request);
+
+        HttpServletRequest httpRequest = (HttpServletRequest) request;
+        String requestURI = httpRequest.getRequestURI();
+
+        if (requestURI.equals("/api/login") || requestURI.equals("/api/signup")) {
+            chain.doFilter(request, response);
+            return;
+        }
 
         // accessToken 유효성 검사하기
         if (accessToken != null) {
