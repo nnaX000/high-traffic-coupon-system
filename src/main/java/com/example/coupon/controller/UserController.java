@@ -40,7 +40,7 @@ public class UserController {
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody LoginRequest req) {
         Authentication authentication =
-                authenticationManager.authenticate(
+                authenticationManager.authenticate( //여기서 UserDetailsService 호출
                         new UsernamePasswordAuthenticationToken(
                                 req.getUsername(), req.getPassword()
                         )
