@@ -57,8 +57,8 @@ public class CouponIssueService {
                 throw new CouponSoldOutException();
             }
 
-            // 사용자 조회
-            User user = userRepository.findByUsername(event.getUsername())
+            // 사용자 조회 (principal = userId)
+            User user = userRepository.findByUserId(event.getUsername())
                 .orElseThrow(() -> new RuntimeException("User not found: " + event.getUsername()));
 
             // 중복 발급 확인
@@ -98,7 +98,12 @@ public class CouponIssueService {
      * 쿠폰 취소 처리
      */
     @Transactional
-    public void cancelCoupon(Long couponId, Long userId) {
+    public void cancelCoupon(Long couponId, String userIdPrincipal) {
+        // 사용자 조회 (principal = userId)
+        User user = userRepository.findByUserId(userIdPrincipal)
+            .orElseThrow(() -> new RuntimeException("User not found: " + userIdPrincipal));
+
+        Long userId = user.getId();
         log.info("Cancelling coupon. couponId: {}, userId: {}", couponId, userId);
 
         // CouponIssue 조회 및 삭제

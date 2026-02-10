@@ -1,6 +1,5 @@
 package com.example.coupon.controller;
 
-import com.example.coupon.repository.UserRepository;
 import com.example.coupon.service.CouponIssueService;
 import com.example.coupon.service.CouponService;
 import lombok.RequiredArgsConstructor;
@@ -16,7 +15,6 @@ public class CouponController {
 
     private final CouponService couponService;
     private final CouponIssueService couponIssueService;
-    private final UserRepository userRepository;
 
     /**
      * 쿠폰 발급 요청
@@ -40,11 +38,8 @@ public class CouponController {
             @PathVariable Long couponId,
             @AuthenticationPrincipal UserDetails userDetails
     ) {
-        Long userId = userRepository.findByUsername(userDetails.getUsername())
-            .orElseThrow(() -> new RuntimeException("User not found"))
-            .getId();
-        
-        couponIssueService.cancelCoupon(couponId, userId);
+        // userDetails.getUsername()은 userId(principal)로 사용
+        couponIssueService.cancelCoupon(couponId, userDetails.getUsername());
         return ResponseEntity.ok().build();
     }
 }
