@@ -17,6 +17,13 @@ import java.time.LocalDateTime;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class CouponIssue {
 
+    public CouponIssue(User user, Coupon coupon, LocalDateTime issuedAt) {
+        this.user = user;
+        this.coupon = coupon;
+        this.issuedAt = issuedAt;
+        this.used = false;
+    }
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;

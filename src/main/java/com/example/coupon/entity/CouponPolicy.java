@@ -32,7 +32,28 @@ public class CouponPolicy {
     @Column(nullable = false)
     private boolean active;
 
+    // 현재 발급 수량
+    @Column(nullable = false)
+    private int issuedQuantity = 0;
+
     public boolean isIssuable(LocalDateTime now) {
         return active && !now.isBefore(startAt) && !now.isAfter(endAt);
+    }
+
+    public boolean canIssue() {
+        return issuedQuantity < totalQuantity;
+    }
+
+    public void incrementIssuedQuantity() {
+        if (!canIssue()) {
+            throw new com.example.coupon.exception.CouponSoldOutException();
+        }
+        this.issuedQuantity++;
+    }
+
+    public void decrementIssuedQuantity() {
+        if (this.issuedQuantity > 0) {
+            this.issuedQuantity--;
+        }
     }
 }
