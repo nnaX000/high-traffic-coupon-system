@@ -50,7 +50,16 @@ public class CouponIssueService {
             CouponPolicy policy = couponPolicyRepository.findByIdWithLock(coupon.getPolicy().getId())
                 .orElseThrow(() -> new RuntimeException("CouponPolicy not found: " + coupon.getPolicy().getId()));
 
-            // 발급 가능 여부 확인
+            // 발급 기간 및 활성화 여부 확인
+            LocalDateTime now = LocalDateTime.now();
+            if (!policy.isIssuable(now)) {
+                log.warn("Coupon not issuable by policy. couponId: {}, now: {}, startAt: {}, endAt: {}, active: {}",
+                    event.getCouponId(), now, policy.getStartAt(), policy.getEndAt(), policy.isActive());
+                // 비재시도성 비즈니스 케이스 → 조용히 소비 후 종료
+                return;
+            }
+
+            // 발급 수량 확인
             if (!policy.canIssue()) {
                 log.warn("Coupon sold out. couponId: {}, issuedQuantity: {}, totalQuantity: {}", 
                     event.getCouponId(), policy.getIssuedQuantity(), policy.getTotalQuantity());
