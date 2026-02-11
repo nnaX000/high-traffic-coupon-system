@@ -21,32 +21,42 @@ public class CouponService {
     private final CouponRepository couponRepository;
 
     private static final String COUPON_LIMIT_KEY_PREFIX = "coupon:%d:limit";
-    private static final String COUPON_COUNT_REQ_KEY_PREFIX = "coupon:%d:countReq";
+    // 남은 재고(선차단용) 카운터
+    private static final String COUPON_STOCK_KEY_PREFIX = "coupon:%d:stock";
     private static final String COUPON_COUNT_KEY_PREFIX = "coupon:%d:count";
 
     /**
      * 쿠폰 발급 요청
-     * - 쿠폰별 정책(totalQuantity)을 기반으로 Limit을 결정
-     * - Limit은 Redis에 캐싱
-     * - Redis countReq로 선차단 후 Kafka로 비동기 처리
+     * - 쿠폰별 정책(totalQuantity)을 기반으로 Redis stock(남은 재고) 초기화
+     * - Redis stock(DECR)을 통해 선차단 후 Kafka로 비동기 처리
      */
     public void issueCoupon(String username, Long couponId) {
-        int limit = getCouponLimit(couponId);
+        // 1. 남은 재고(stock) 키 계산
+        String stockKey = String.format(COUPON_STOCK_KEY_PREFIX, couponId);
 
-        // countReq 증가 (선차감) - INCR 결과로 제한 초과 여부 판단
-        String countReqKey = String.format(COUPON_COUNT_REQ_KEY_PREFIX, couponId);
-        Long reqCount = redisTemplate.opsForValue().increment(countReqKey);
+        // 2. stock 키가 없으면 totalQuantity로 초기화 (정책 기준)
+        Boolean hasStockKey = redisTemplate.hasKey(stockKey);
+        if (hasStockKey == null || !hasStockKey) {
+            int limit = getCouponLimit(couponId); // CouponPolicy.totalQuantity 기반
+            redisTemplate.opsForValue().set(stockKey, String.valueOf(limit));
+        }
 
-        if (reqCount != null && reqCount > limit) {
-            log.warn("Coupon request limit exceeded. couponId: {}, reqCount: {}, limit: {}", couponId, reqCount, limit);
+        // 3. 남은 재고에서 1 감소 (원자적)
+        Long remain = redisTemplate.opsForValue().decrement(stockKey);
+
+        // 재고가 0 미만으로 내려갔으면 즉시 복구 후 SOLD OUT
+        if (remain != null && remain < 0) {
+            // 보정: 잘못 깎인 만큼 되돌리기
+            redisTemplate.opsForValue().increment(stockKey);
+            log.warn("Coupon sold out at Redis stock gate. couponId: {}, remain: {}", couponId, remain);
             throw new CouponSoldOutException();
         }
 
-        // Kafka 발행 (비동기)
+        // 4. Kafka 발행 (비동기)
         CouponIssueEvent event = new CouponIssueEvent(couponId, username);
         kafkaTemplate.send("coupon-issue", event);
 
-        log.debug("Coupon issue event sent to Kafka. couponId: {}, username: {}", couponId, username);
+        log.debug("Coupon issue event sent to Kafka. couponId: {}, username: {}, remainStock: {}", couponId, username, remain);
     }
 
     /**
@@ -77,24 +87,5 @@ public class CouponService {
         redisTemplate.opsForValue().set(limitKey, String.valueOf(limit));
 
         return limit;
-    }
-
-    /**
-     * 쿠폰 취소
-     * DB에서 삭제하고 Redis count만 감소 (countReq는 그대로)
-     */
-    @Transactional
-    public void cancelCoupon(Long couponId, Long userId) {
-        // DB에서 쿠폰 발급 내역 삭제
-        // (실제 구현은 CouponIssueService에서 처리)
-
-        // Redis count만 감소 (재고 복구)
-        String countKey = String.format(COUPON_COUNT_KEY_PREFIX, couponId);
-        Long count = redisTemplate.opsForValue().decrement(countKey);
-
-        log.info("Coupon cancelled. couponId: {}, userId: {}, remaining count: {}",
-            couponId, userId, count);
-
-        // countReq는 건드리지 않음 (과거 요청 기록이므로)
     }
 }

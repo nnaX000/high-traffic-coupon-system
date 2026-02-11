@@ -128,11 +128,15 @@ public class CouponIssueService {
         policy.decrementIssuedQuantity();
         couponPolicyRepository.save(policy);
 
-        // Redis count 감소 (재고 복구)
+        // Redis count 감소 (실제 발급 수 감소)
         Long count = redisTemplate.opsForValue()
             .decrement("coupon:" + couponId + ":count");
 
-        log.info("Coupon cancelled successfully. couponId: {}, userId: {}, remaining count: {}", 
-            couponId, userId, count);
+        // Redis stock 증가 (재고 복구)
+        Long stock = redisTemplate.opsForValue()
+            .increment(String.format("coupon:%d:stock", couponId));
+
+        log.info("Coupon cancelled successfully. couponId: {}, userId: {}, remaining count: {}, restored stock: {}", 
+            couponId, userId, count, stock);
     }
 }
