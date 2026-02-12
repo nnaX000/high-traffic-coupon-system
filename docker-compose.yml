@@ -1,5 +1,6 @@
 version: '3'
 services:
+  # Zookeeper (Kafka 의존성)
   zookeeper:
     image: confluentinc/cp-zookeeper:7.6.0
     ports:
@@ -7,6 +8,7 @@ services:
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
 
+  # Kafka (쿠폰 발급 비동기 메시징)
   kafka:
     image: confluentinc/cp-kafka:7.6.0
     ports:
@@ -19,3 +21,49 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
     depends_on:
       - zookeeper
+
+  # Redis (쿠폰 발급 카운터 / 재고 관리)
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+
+  # MySQL (쿠폰 발급 원장 DB)
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: coupon
+      MYSQL_USER: coupon
+      MYSQL_PASSWORD: couponpass
+    ports:
+      - "3306:3306"
+    command: ["--default-authentication-plugin=mysql_native_password"]
+
+  # Toxiproxy (Redis/Kafka 네트워크 장애 주입)
+  toxiproxy:
+    image: ghcr.io/shopify/toxiproxy:2.9.0
+    ports:
+      - "8474:8474"   # HTTP API
+      - "8666:8666"   # Redis proxy (예시)
+      - "8667:8667"   # Kafka proxy (예시)
+    depends_on:
+      - redis
+      - kafka
+
+  # Prometheus (메트릭 수집)
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+
+  # Grafana (대시보드)
+  grafana:
+    image: grafana/grafana:11.1.0
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
