@@ -25,8 +25,8 @@ Accepted
 - 발급 가능 여부 판단
 
 **문제점:**
-- 취소 시 재발급 불가능
-- countReq가 절대 상한선이 되어버림
+- 단일 카운터만 있을 경우, 여러 사용자가 거의 동시에 진입해 DB까지 도달하는 사이의 time gap 동안 서로를 보지 못해 **서버 진입 시점의 쿠폰 재고와 DB 커밋 시점의 쿠폰 재고가 달라질 수 있고, 그에 따라 초과 발급 가능성**이 존재함
+- 취소/재발급, 장애 복구 등 복합 시나리리오에서 "현재 재고"와 "DB에 커밋된 발급 이력 수"를 분리해서 관리하기 어려움
 
 ### 2. 이중 카운터 (countReq + count)
 - countReq: 선차감 (요청 시 증가)
@@ -45,12 +45,12 @@ Accepted
 - 취소 시 INCR로 재고 복구
 
 ## Decision
-**Redis 이중 카운터 전략 + Kafka를 통한 커넥션 풀 보호**
+**Redis 이중 카운터 전략(count + stock) + Kafka를 통한 커넥션 풀 보호**
 
-### 아키텍처
+### 아키텍처 (최신 설계 반영)
 ```
 API 요청 
-  → Redis countReq 증가 (선차단)
+  → Redis stock 선차감 (DECR, 재고 확인)
   → Kafka 발행
   → Consumer (제한된 개수)
   → DB 비관적 락 (정합성 보장)
@@ -58,17 +58,23 @@ API 요청
 
 ### 역할 분리
 
-#### 1. countReq (요청 카운터)
-- **목적**: 앞단 트래픽 차단 및 커넥션 풀 보호
-- **증가 시점**: API 요청 시 (Kafka 발행 전)
-- **감소 시점**: 감소하지 않음 (과거 요청 기록)
-- **용도**: "이 이벤트에 몇 명이 입장 시도했는지" 통계
+#### 1. stock (재고 카운터)
+- **목적**: 선차감 기반 재고 관리 및 초과 발급 방지
+- **증가 시점**: 초기 재고 세팅, 취소 시 재고 복구
+- **감소 시점**: API 요청 시 선차감(DECR)
+- **용도**: "지금 시점에 남은 발급 가능 수량" 판단
 
-#### 2. count (실제 발급 카운터) 또는 stock (재고)
-- **목적**: 실제 발급 수량 관리
+#### 2. count (현재 발급 카운터)
+- **목적**: 현재까지 발급되어 살아있는 쿠폰 수 관리
 - **증가 시점**: Consumer에서 DB 저장 성공 시
 - **감소 시점**: 쿠폰 취소 시
-- **용도**: 재발급 가능 여부 판단
+- **용도**: 재발급 가능 여부 및 현재 발급 수 확인
+
+#### 3. issued_total (누적 발급 카운터)
+- **목적**: 취소 여부와 무관한 "역사적 총 발급 횟수" 추적 및 모니터링
+- **증가 시점**: Consumer에서 DB 저장 성공 시
+- **감소 시점**: 없음 (단조 증가)
+- **용도**: DB `coupon_issue` 이력 수와 비교하여 Redis-DB 정합성 모니터링
 
 ### 핵심 원칙
 1. **countReq는 "게이트" 역할만**: 정확한 재고가 아님
@@ -77,14 +83,17 @@ API 요청
 
 ## Implementation
 
-### API 레벨 (선차단)
+### API 레벨 (선차단: stock 기반)
 ```java
 public void issueCoupon(String username, Long couponId) {
-    // countReq 증가 (선차감)
-    Long reqCount = redisTemplate.opsForValue()
-        .increment("coupon:" + couponId + ":countReq");
+    // stock 선차감으로 재고 관리
+    Long remain = redisTemplate.opsForValue()
+        .decrement("coupon:" + couponId + ":stock");
     
-    if (reqCount > LIMIT) {
+    if (remain == null || remain < 0) {
+        // 재고 부족 시 복구 후 SOLD OUT 처리
+        redisTemplate.opsForValue()
+            .increment("coupon:" + couponId + ":stock");
         throw new CouponSoldOutException();
     }
     
@@ -94,7 +103,7 @@ public void issueCoupon(String username, Long couponId) {
 }
 ```
 
-### Consumer 레벨 (정합성 보장)
+### Consumer 레벨 (정합성 보장 + 카운터 업데이트)
 ```java
 @KafkaListener(topics = "coupon-issue", concurrency = "10") // 최대 10개 동시 처리
 public void consume(CouponIssueEvent event) {
@@ -105,28 +114,41 @@ public void consume(CouponIssueEvent event) {
     if (policy.canIssue()) {
         policy.incrementIssuedQuantity();
         repository.save(policy);
-        saveCouponIssue(event);
+        saveCouponIssue(event); // DB coupon_issue 이력 생성
         
-        // 실제 발급 성공 시 count 증가
+        // 실제 발급 성공 시 count 증가 (현재 발급 카운터)
         redisTemplate.opsForValue()
             .increment("coupon:" + event.getCouponId() + ":count");
+
+        // 누적 발급 카운터 증가 (취소와 무관한 total)
+        redisTemplate.opsForValue()
+            .increment("coupon:" + event.getCouponId() + ":issued_total");
     } else {
         throw new CouponSoldOutException();
     }
 }
 ```
 
-### 쿠폰 취소 처리
+### 쿠폰 취소 처리 (튜플 보존 + 플래그 변경)
 ```java
 public void cancelCoupon(Long couponId, Long userId) {
-    // 1. DB에서 쿠폰 발급 내역 삭제
-    couponIssueRepository.deleteByCouponIdAndUserId(couponId, userId);
+    // 1. DB에서 쿠폰 발급 이력을 조회하고, 삭제 대신 canceled 플래그로 관리
+    CouponIssue issue = couponIssueRepository.findByUserIdAndCouponId(userId, couponId)
+        .orElseThrow(() -> new RuntimeException("CouponIssue not found"));
+
+    if (issue.isUsed()) {
+        throw new RuntimeException("Cannot cancel used coupon");
+    }
+
+    issue.cancel(); // 튜플은 유지, 취소 여부만 표시
     
-    // 2. Redis count만 감소 (재고 복구)
+    // 2. Redis count만 감소 (현재 발급 수 감소)
     redisTemplate.opsForValue()
         .decrement("coupon:" + couponId + ":count");
     
-    // 3. countReq는 건드리지 않음 (과거 요청 기록이므로)
+    // 3. Redis stock 증가 (재고 복구)
+    redisTemplate.opsForValue()
+        .increment(String.format("coupon:%d:stock", couponId));
 }
 ```
 
