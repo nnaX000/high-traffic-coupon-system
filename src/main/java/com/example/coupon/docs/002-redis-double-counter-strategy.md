@@ -51,7 +51,7 @@ Accepted
 ```
 API 요청 
   → Redis stock 선차감 (DECR, 재고 확인)
-  → Kafka 발행
+  → Kafka 발행 (key = couponId, value = CouponIssueEvent(JSON))
   → Consumer (제한된 개수)
   → DB 비관적 락 (정합성 보장)
 ```
@@ -97,9 +97,9 @@ public void issueCoupon(String username, Long couponId) {
         throw new CouponSoldOutException();
     }
     
-    // Kafka 발행 (비동기)
+    // Kafka 발행 (비동기) - key를 couponId로 사용하여 쿠폰별 순서/파티션 고정
     CouponIssueEvent event = new CouponIssueEvent(couponId, username);
-    kafkaTemplate.send("coupon-issue", event);
+    kafkaTemplate.send("coupon-issue", String.valueOf(couponId), event);
 }
 ```
 
