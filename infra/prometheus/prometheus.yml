@@ -1,0 +1,16 @@
+global:
+  scrape_interval: 15s # 15초마다 메트릭 수집
+
+scrape_configs:
+  # Spring Boot 애플리케이션 메트릭 (추후 app 서비스에 맞게 targets 수정)
+  - job_name: 'coupon-app'
+    static_configs:
+      - targets: ['host.docker.internal:8080'] # 8080 스프링부트 서버로 접근
+
+  # Redis 메트릭 (redis_exporter 등을 붙이는 경우 사용)
+  # - job_name: 'redis'
+  #   static_configs:
+  #     - targets: ['host.docker.internal:9121']
+
+  # Kafka / 기타 인프라 메트릭은 운영 환경 구성에 맞게 별도 추가
+
