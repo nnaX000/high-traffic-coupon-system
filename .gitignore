@@ -25,6 +25,9 @@ logs/
 application-local.properties
 application-prod.properties
 
+### Seed dump (대용량 CSV) ###
+infra/seed/data/
+
 ### Docs ###
 HELP.md
 src/main/resources/application.properties

@@ -39,7 +39,11 @@ services:
       MYSQL_PASSWORD: couponpass
     ports:
       - "3306:3306"
-    command: ["--default-authentication-plugin=mysql_native_password"]
+    volumes:
+      - ./infra/seed/data:/seed/data
+    command:
+      - --default-authentication-plugin=mysql_native_password
+      - --secure-file-priv=/seed
 
   # Toxiproxy (Redis/Kafka 네트워크 장애 주입)
   toxiproxy:
