@@ -47,6 +47,10 @@ dependencies {
 
 	//kafka
 	implementation 'org.springframework.boot:spring-boot-starter-kafka'
+
+	// Actuator + Prometheus 메트릭 노출
+	implementation 'org.springframework.boot:spring-boot-starter-actuator'
+	implementation 'io.micrometer:micrometer-registry-prometheus'
 }
 
 tasks.named('test') {
