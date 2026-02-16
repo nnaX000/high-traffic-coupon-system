@@ -38,4 +38,14 @@ jwt:
     expire-time: 86400000       # 1000 * 60 * 60 * 24 (1일)
   refresh-token:
     expire-time: 259200000      # 1000 * 60 * 60 * 24 * 3 (3일)
-
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "health,info,prometheus,metrics"
+  endpoint:
+    prometheus:
+      enabled: true
+  metrics:
+    tags:
+      application: "high-traffic-coupon-system"
