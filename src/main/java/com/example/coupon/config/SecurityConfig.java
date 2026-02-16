@@ -49,7 +49,9 @@ public class SecurityConfig {
                         .requestMatchers(
                                 "/api/login",
                                 "/api/signup",
-                                "/members/refresh"
+                                "/members/refresh",
+                                "/actuator/health",
+                                "/actuator/prometheus"
                         ).permitAll()
                         .requestMatchers(HttpMethod.DELETE, "/user").hasRole("ADMIN")
                         .requestMatchers("/members/role").hasRole("USER")
