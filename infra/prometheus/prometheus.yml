@@ -4,6 +4,7 @@ global:
 scrape_configs:
   # Spring Boot 애플리케이션 메트릭 (추후 app 서비스에 맞게 targets 수정)
   - job_name: 'coupon-app'
+    metrics_path: '/actuator/prometheus'
     static_configs:
       - targets: ['host.docker.internal:8080'] # 8080 스프링부트 서버로 접근
 
