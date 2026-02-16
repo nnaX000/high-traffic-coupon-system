@@ -71,3 +71,15 @@ services:
       - "3000:3000"
     depends_on:
       - prometheus
+
+  # k6 부하 테스트 (로컬에 k6 미설치 시 사용. 앱은 호스트에서 기동)
+  k6:
+    image: grafana/k6:latest
+    volumes:
+      - ./infra/k6:/scripts:ro
+    environment:
+      BASE_URL: http://host.docker.internal:8080
+      COUPON_ID: "1"
+      JWT_SECRET: "loadtest-secret-please-change-32bytes-minimum-123456"
+      TOKEN_POOL_SIZE: "3000"
+    command: run /scripts/coupon-issue-scenario.js
