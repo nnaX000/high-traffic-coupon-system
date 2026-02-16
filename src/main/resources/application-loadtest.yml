@@ -1,0 +1,9 @@
+# 부하 테스트 전용 프로파일. 운영/개발 시크릿과 분리해 k6에서 동일 시크릿으로 JWT 직접 생성.
+# 서버 기동: SPRING_PROFILES_ACTIVE=loadtest
+# 주의: HS256 키 길이 이슈 없도록 secret은 32 bytes 이상 유지.
+jwt:
+  secret: "loadtest-secret-please-change-32bytes-minimum-123456"
+  access-token:
+    expire-time: 3600000   # 1시간 (ms)
+  refresh-token:
+    expire-time: 259200000 # 3일 (ms)
