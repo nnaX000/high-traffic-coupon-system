@@ -46,7 +46,21 @@ public class CouponIssue {
     @Column(nullable = false)
     private boolean used = false;
 
+    // 취소 여부 (true면 발급 이력은 있지만 사용자가 취소한 상태)
+    @Column(nullable = false)
+    private boolean canceled = false;
+
+    // 목적: 쿠폰을 사용 처리한다.
+    // 입력/출력: 입력 없음, 내부 필드 used를 true로 변경한다.
+    // 핵심 로직: 현재 엔티티의 used 플래그를 true로 설정한다.
     public void use() {
         this.used = true;
+    }
+
+    // 목적: 쿠폰 발급을 취소 상태로 표시한다.
+    // 입력/출력: 입력 없음, 내부 필드 canceled를 true로 변경한다.
+    // 핵심 로직: 현재 엔티티의 canceled 플래그를 true로 설정한다.
+    public void cancel() {
+        this.canceled = true;
     }
 }

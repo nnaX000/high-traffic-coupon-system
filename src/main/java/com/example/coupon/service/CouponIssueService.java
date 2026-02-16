@@ -10,6 +10,7 @@ import com.example.coupon.repository.CouponIssueRepository;
 import com.example.coupon.repository.CouponPolicyRepository;
 import com.example.coupon.repository.CouponRepository;
 import com.example.coupon.repository.UserRepository;
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -29,6 +30,7 @@ public class CouponIssueService {
     private final CouponIssueRepository couponIssueRepository;
     private final UserRepository userRepository;
     private final StringRedisTemplate redisTemplate;
+    private final MeterRegistry meterRegistry;
 
     /**
      * Kafka Consumer: 쿠폰 발급 처리
@@ -38,6 +40,9 @@ public class CouponIssueService {
     @KafkaListener(topics = "coupon-issue", concurrency = "10")
     @Transactional
     public void consume(CouponIssueEvent event) {
+        // 메트릭: Kafka로부터 소비된 발급 이벤트 수 (Consumer 진입 횟수)
+        meterRegistry.counter("coupon_issue_kafka_consumed_total").increment();
+
         log.info("Processing coupon issue event. couponId: {}, username: {}", 
             event.getCouponId(), event.getUsername());
 
@@ -63,6 +68,8 @@ public class CouponIssueService {
             if (!policy.canIssue()) {
                 log.warn("Coupon sold out. couponId: {}, issuedQuantity: {}, totalQuantity: {}", 
                     event.getCouponId(), policy.getIssuedQuantity(), policy.getTotalQuantity());
+                // 메트릭: DB 정책 레벨에서 품절로 거부된 발급 이벤트 수
+                meterRegistry.counter("coupon_issue_db_sold_out_total").increment();
                 throw new CouponSoldOutException();
             }
 
@@ -75,6 +82,8 @@ public class CouponIssueService {
                 .ifPresent(ci -> {
                     log.warn("Coupon already issued. couponId: {}, userId: {}", 
                         event.getCouponId(), user.getId());
+                    // 메트릭: Kafka 이벤트 기준 중복 발급 시도 건수
+                    meterRegistry.counter("coupon_issue_duplicate_total").increment();
                     throw new RuntimeException("Coupon already issued");
                 });
 
@@ -86,16 +95,25 @@ public class CouponIssueService {
             CouponIssue couponIssue = new CouponIssue(user, coupon, LocalDateTime.now());
             couponIssueRepository.save(couponIssue);
 
-            // 실제 발급 성공 시 Redis count 증가
+            // 메트릭: DB에 실제 발급(INSERT)까지 완료된 쿠폰 수
+            meterRegistry.counter("coupon_issue_db_success_total").increment();
+
+            // 실제 발급 성공 시 Redis count 증가 (현재 발급 수 관리)
             Long count = redisTemplate.opsForValue()
                 .increment("coupon:" + event.getCouponId() + ":count");
 
-            log.info("Coupon issued successfully. couponId: {}, username: {}, count: {}", 
-                event.getCouponId(), event.getUsername(), count);
+            // 목적: 누적 발급 횟수 모니터링(취소 여부와 무관한 총 발급 수)용 카운터 증가.
+            // 입력/출력: 입력은 couponId, 출력은 Redis에 저장된 issued_total 값.
+            // 핵심 로직: 발급 성공 시마다 issued_total 카운터를 단조 증가시킨다.
+            Long issuedTotal = redisTemplate.opsForValue()
+                .increment("coupon:" + event.getCouponId() + ":issued_total");
+
+            log.info("Coupon issued successfully. couponId: {}, username: {}, count: {}, issuedTotal: {}", 
+                event.getCouponId(), event.getUsername(), count, issuedTotal);
 
         } catch (CouponSoldOutException e) {
             log.error("Failed to issue coupon - sold out. couponId: {}", event.getCouponId());
-            throw e;
+            return;
         } catch (Exception e) {
             log.error("Failed to issue coupon. couponId: {}, username: {}", 
                 event.getCouponId(), event.getUsername(), e);
@@ -115,7 +133,7 @@ public class CouponIssueService {
         Long userId = user.getId();
         log.info("Cancelling coupon. couponId: {}, userId: {}", couponId, userId);
 
-        // CouponIssue 조회 및 삭제
+        // CouponIssue 조회
         CouponIssue couponIssue = couponIssueRepository
             .findByUserIdAndCouponId(userId, couponId)
             .orElseThrow(() -> new RuntimeException("CouponIssue not found"));
@@ -125,8 +143,8 @@ public class CouponIssueService {
             throw new RuntimeException("Cannot cancel used coupon");
         }
 
-        // DB에서 삭제
-        couponIssueRepository.delete(couponIssue);
+        // 취소 상태로만 변경 (이력은 보존)
+        couponIssue.cancel();
 
         // Coupon 조회 후 CouponPolicy 발급 수량 감소
         Coupon coupon = couponRepository.findById(couponId)
