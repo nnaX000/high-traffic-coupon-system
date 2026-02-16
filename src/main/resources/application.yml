@@ -1,0 +1,41 @@
+spring:
+  datasource:
+    # 127.0.0.1 사용: Docker MySQL이 coupon@'%'로만 생성돼 있을 때 localhost 접속 거부 방지
+    url: jdbc:mysql://127.0.0.1:3306/coupon?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+    username: coupon
+    password: couponpass
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      # Hibernate 6+ 에서는 MySQLDialect 사용 (MySQL8Dialect 제거됨)
+      hibernate:
+        dialect: org.hibernate.dialect.MySQLDialect
+
+  data:
+    redis:
+      host: 127.0.0.1   # docker-compose redis: 0.0.0.0:6379 -> 6379
+      port: 6379
+
+  kafka:
+    consumer:
+      # 쿠폰 발급 Consumer용 기본 group.id (KafkaListener에서 별도 groupId 지정 없을 때 사용)
+      group-id: coupon-issue-consumer
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "com.example.coupon.dto"
+        spring.json.value.default.type: "com.example.coupon.dto.CouponIssueEvent"
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+
+jwt:
+  secret: "local-dev-jwt-secret-change-me"
+  access-token:
+    expire-time: 86400000       # 1000 * 60 * 60 * 24 (1일)
+  refresh-token:
+    expire-time: 259200000      # 1000 * 60 * 60 * 24 * 3 (3일)
+
